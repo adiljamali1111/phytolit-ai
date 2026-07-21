@@ -113,22 +113,30 @@ export default function Home() {
   };
 
   const handleDownloadPDF = async () => {
-    setDownloading(true);
-    const element = document.getElementById('pdf-content');
-    const html2pdf = (await import('html2pdf.js')).default;
-    const opt = {
-      margin: 0.5,
-      filename: 'PhytoLit_Synthesis.pdf',
-      image: { type: 'jpeg' as any, quality: 1 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a' },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as any },
-    };
-    if (element) {
-  await html2pdf().set(opt).from(element).save();
-}
-
-    setDownloading(false);
-  };
+  setDownloading(true);
+  
+  setTimeout(async () => {
+    try {
+      const element = document.getElementById('pdf-content');
+      const html2pdf = (await import('html2pdf.js')).default;
+      const opt = {
+        margin: 0.5,
+        filename: 'PhytoLit_Synthesis.pdf',
+        image: { type: 'jpeg' as any, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a' },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as any },
+      };
+      
+      if (element) {
+        await html2pdf().set(opt).from(element).save();
+      }
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  }, 100);
+};
 
   const handleExportCitations = () => {
     const match = result.match(/```bibtex([\s\S]*?)```/);
