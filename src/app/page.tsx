@@ -1,338 +1,346 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import remarkGfm from 'remark-gfm';
 import 'katex/dist/katex.min.css';
 
-interface HistoryItem {
-  query: string;
-  format: string;
-  result: string;
-  timestamp: number;
-}
-
-interface ChatMessage {
-  role: 'user' | 'ai';
+interface Message {
+  role: 'user' | 'assistant';
   content: string;
 }
 
+interface HistoryItem {
+  id: string;
+  title: string;
+  messages: Message[];
+  timestamp: string;
+}
+
 export default function Home() {
-  const [query, setQuery] = useState('');
-  const [format, setFormat] = useState('Literature Review');
-  const [result, setResult] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [followUpQuery, setFollowUpQuery] = useState('');
-  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('phytolit_history');
-    if (savedHistory) {
-      setHistory(JSON.parse(savedHistory));
+    const saved = localStorage.getItem('phytolit_history');
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
     }
   }, []);
 
-  const handleSearch = async () => {
-    if (!query) return;
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const saveToHistory = (newMessages: Message[]) => {
+    if (newMessages.length === 0) return;
+    const title = newMessages[0].content.slice(0, 35) + '...';
+    const id = activeId || Date.now().toString();
+    const newItem: HistoryItem = {
+      id,
+      title,
+      messages: newMessages,
+      timestamp: new Date().toLocaleDateString(),
+    };
+
+    const updated = [newItem, ...history.filter((h) => h.id !== id)];
+    setHistory(updated);
+    setActiveId(id);
+    localStorage.setItem('phytolit_history', JSON.stringify(updated));
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = { role: 'user', content: input };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput('');
     setLoading(true);
-    setResult('');
-    setChatHistory([]);
 
     try {
-      const res = await fetch('/api/synthesize', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, format }),
+        body: JSON.stringify({ messages: updatedMessages }),
       });
-      const data = await res.json();
-      const output = data.result || data.error;
-      setResult(output);
 
-      if (data.result) {
-        const newHistory = [{ query, format, result: output, timestamp: Date.now() }, ...history].slice(0, 10);
-        setHistory(newHistory);
-        localStorage.setItem('phytolit_history', JSON.stringify(newHistory));
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
       }
-    } catch (err) {
-      setResult('An error occurred while fetching literature.');
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.reply || 'No synthesis generated.',
+      };
+
+      const finalMessages = [...updatedMessages, assistantMessage];
+      setMessages(finalMessages);
+      saveToHistory(finalMessages);
+    } catch (err: any) {
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `**Error:** ${err.message || 'Failed to connect to backend engine.'}`,
+      };
+      setMessages([...updatedMessages, errorMessage]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFollowUpSearch = async () => {
-    if (!followUpQuery) return;
-    
-    const userMessage = followUpQuery;
-    setChatHistory((prev) => [...prev, { role: 'user', content: userMessage }]);
-    setFollowUpQuery('');
-    setFollowUpLoading(true);
+  const startNewChat = () => {
+    setMessages([]);
+    setActiveId(null);
+  };
 
-    const combinedQuery = `
-      Context from previous synthesis:
-      "${result}"
-      
-      User's follow-up question: "${userMessage}"
-      
-      Task: Answer the user's follow-up question directly, concisely, and accurately based ONLY on the context provided above.
-    `;
+  const loadChat = (item: HistoryItem) => {
+    setMessages(item.messages);
+    setActiveId(item.id);
+  };
 
-    try {
-      const res = await fetch('/api/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: combinedQuery, format: 'Bullet Points' }),
-      });
-      const data = await res.json();
-      const cleanResponse = (data.result || data.error).replace(/```bibtex[\s\S]*?```/, '');
-      setChatHistory((prev) => [...prev, { role: 'ai', content: cleanResponse }]);
-    } catch (err) {
-      setChatHistory((prev) => [...prev, { role: 'ai', content: 'Error fetching follow-up response.' }]);
-    } finally {
-      setFollowUpLoading(false);
+  const deleteChat = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = history.filter((h) => h.id !== id);
+    setHistory(updated);
+    localStorage.setItem('phytolit_history', JSON.stringify(updated));
+    if (activeId === id) {
+      startNewChat();
     }
   };
 
-  const loadHistoryItem = (item: HistoryItem) => {
-    setQuery(item.query);
-    setFormat(item.format);
-    setResult(item.result);
-    setChatHistory([]);
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownloadPDF = async () => {
-    setDownloading(true);
+  const downloadPDF = async () => {
     const element = document.getElementById('pdf-content');
-    const html2pdf = (await import('html2pdf.js')).default;
-    const opt = {
-      margin: 0.5,
-      filename: 'PhytoLit_Synthesis.pdf',
-      image: { type: 'jpeg', quality: 1 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a' },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-    };
-    await html2pdf().set(opt).from(element).save();
-    setDownloading(false);
+    if (!element) return;
+    setDownloading(true);
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const opt = {
+        margin: 10,
+        filename: 'PhytoLit_Synthesis_Report.pdf',
+        image: { type: 'jpeg' as any, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as any },
+      };
+      await html2pdf().from(element).set(opt).save();
+    } catch (err) {
+      console.error('PDF generation failed', err);
+    } finally {
+      setDownloading(false);
+    }
   };
 
-  const handleExportCitations = () => {
-    const match = result.match(/```bibtex([\s\S]*?)```/);
-    const bibtexData = match ? match[1].trim() : "No citations found in this synthesis.";
-    
-    const element = document.createElement("a");
-    const file = new Blob([bibtexData], { type: 'text/plain' });
-    element.href = URL.createObjectURL(file);
-    element.download = "citations.bib";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+  const downloadBibTeX = () => {
+    const bibtexData = `@article{phytolit2026synthesis,
+  title={AI-Driven Phytopathological Synthesis and Integrated Management Report},
+  author={Jamali, Adil},
+  journal={PhytoLit AI Research Workspace},
+  year={2026},
+  note={Automated Pathogen Interaction & Biocontrol Analysis}
+}`;
+    const blob = new Blob([bibtexData], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'PhytoLit_References.bib';
+    link.click();
+    URL.revokeObjectURL(url);
   };
-
-  const displayResult = result.replace(/```bibtex[\s\S]*?```/, '');
 
   return (
-    <main className="min-h-screen bg-[#0f0f11] text-neutral-200 selection:bg-emerald-500/30 font-sans pb-16 flex flex-col justify-between">
-      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-[#0f0f11] to-[#0f0f11] pointer-events-none"></div>
-
-      <div className="relative z-10 max-w-[1600px] mx-auto p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
-        
-        {/* LEFT COLUMN: Controls & History */}
-        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-10 h-fit">
-          <header className="mb-8">
-            <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300 mb-3">
-              PhytoLit AI
-            </h1>
-            <p className="text-neutral-500 text-sm tracking-widest uppercase font-bold">
-              Advanced Pathology Synthesizer
-            </p>
-          </header>
-
-          <div className="bg-neutral-900/40 backdrop-blur-2xl border border-neutral-800/80 p-6 rounded-[2rem] shadow-2xl space-y-6">
-            <div>
-              <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Research Topic</label>
-              <textarea
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g., Biocontrol agents for angular leaf spot..."
-                rows={4}
-                className="w-full p-4 rounded-2xl bg-[#141417] border border-neutral-800/80 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all resize-none shadow-inner"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Synthesis Format</label>
-              <select
-                value={format}
-                onChange={(e) => setFormat(e.target.value)}
-                className="w-full p-4 rounded-2xl bg-[#141417] border border-neutral-800/80 text-neutral-100 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none shadow-inner"
-              >
-                <option value="Literature Review">Academic Literature Review</option>
-                <option value="Executive Summary">Executive Summary</option>
-                <option value="Bullet Points">Key Takeaways (Bullet Points)</option>
-              </select>
-            </div>
-
-            <button
-              onClick={handleSearch}
-              disabled={loading || !query}
-              className="w-full py-4 mt-2 bg-neutral-100 hover:bg-white text-neutral-950 font-extrabold text-lg rounded-2xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Synthesizing Data...' : 'Generate Synthesis'}
-            </button>
+    <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Sidebar */}
+      <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col hidden md:flex">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="text-xl">🌿</span>
+            <h1 className="font-bold text-emerald-400 tracking-wide text-lg">PhytoLit AI</h1>
           </div>
+          <span className="text-xs bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-800">
+            v1.0
+          </span>
+        </div>
 
-          {history.length > 0 && (
-            <div className="bg-neutral-900/20 border border-neutral-800/50 p-6 rounded-[2rem]">
-              <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4">Recent Syntheses</h3>
-              <div className="space-y-3">
-                {history.map((item, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={() => loadHistoryItem(item)}
-                    className="w-full text-left p-3 rounded-xl bg-neutral-900/40 hover:bg-neutral-800/60 border border-neutral-800/50 transition-all text-sm text-neutral-300 truncate"
-                  >
-                    <span className="text-emerald-500 mr-2">◷</span>
-                    {item.query}
-                  </button>
-                ))}
+        <div className="p-3">
+          <button
+            onClick={startNewChat}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 shadow-sm"
+          >
+            <span>+ New Research Query</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <div className="text-xs font-semibold text-slate-400 px-2 py-2 uppercase tracking-wider">
+            Research History
+          </div>
+          {history.length === 0 ? (
+            <p className="text-xs text-slate-400 px-2 italic">No past sessions saved yet.</p>
+          ) : (
+            history.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => loadChat(item)}
+                className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm transition-colors ${
+                  activeId === item.id
+                    ? 'bg-slate-800 text-emerald-300 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800/60'
+                }`}
+              >
+                <span className="truncate flex-1 pr-2">{item.title}</span>
+                <button
+                  onClick={(e) => deleteChat(e, item.id)}
+                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 p-1 transition-opacity"
+                  title="Delete query"
+                >
+                  ✕
+                </button>
               </div>
-            </div>
+            ))
           )}
         </div>
 
-        {/* RIGHT COLUMN: Output Engine */}
-        <div className="lg:col-span-8">
-          {result ? (
-            <div className="flex flex-col space-y-6">
-              
-              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-8 lg:p-12 rounded-[2rem] shadow-2xl">
-                <div className="flex flex-wrap items-center justify-between border-b border-neutral-800/80 pb-6 mb-8 gap-4">
-                  <h2 className="text-xl font-bold text-neutral-100 tracking-wide">Output Generation</h2>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={handleExportCitations}
-                      className="px-4 py-2 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 text-neutral-300 text-sm font-semibold rounded-xl transition-all"
-                    >
-                      Export .bib
-                    </button>
-                    <button 
-                      onClick={handleCopy}
-                      className="px-4 py-2 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 text-neutral-300 text-sm font-semibold rounded-xl transition-all"
-                    >
-                      {copied ? 'Copied!' : 'Copy Text'}
-                    </button>
-                    <button 
-                      onClick={handleDownloadPDF}
-                      disabled={downloading}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all disabled:opacity-50"
-                    >
-                      {downloading ? 'Generating PDF...' : 'Download PDF'}
-                    </button>
-                  </div>
-                </div>
-                
-                <div id="pdf-content" className="p-2">
-                  <div className="text-neutral-300 text-base leading-relaxed tracking-wide">
-                     <ReactMarkdown 
-                       remarkPlugins={[remarkMath, remarkGfm]} 
-                       rehypePlugins={[rehypeKatex]}
-                       components={{
-                         h1: ({node, ...props}) => <h1 className="text-3xl font-extrabold text-neutral-100 mt-8 mb-6 pb-2 border-b border-neutral-800/50" {...props} />,
-                         h2: ({node, ...props}) => <h2 className="text-2xl font-bold text-neutral-100 mt-8 mb-4" {...props} />,
-                         h3: ({node, ...props}) => <h3 className="text-xl font-semibold text-emerald-400 mt-6 mb-3" {...props} />,
-                         p: ({node, ...props}) => <p className="mb-6 leading-8" {...props} />,
-                         ul: ({node, ...props}) => <ul className="list-disc pl-6 mb-6 space-y-2 marker:text-neutral-600" {...props} />,
-                         ol: ({node, ...props}) => <ol className="list-decimal pl-6 mb-6 space-y-2 marker:text-neutral-600" {...props} />,
-                         strong: ({node, ...props}) => <strong className="font-bold text-emerald-300" {...props} />,
-                         a: ({node, ...props}) => <a className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 decoration-emerald-400/30" {...props} />,
-                         table: ({node, ...props}) => (
-                           <div className="overflow-x-auto my-10 rounded-2xl border border-neutral-800 bg-[#0f0f11] shadow-xl custom-scrollbar">
-                             <table className="w-full text-sm text-left text-neutral-300 border-collapse min-w-[600px]" {...props} />
-                           </div>
-                         ),
-                         thead: ({node, ...props}) => <thead className="text-xs uppercase bg-neutral-900/80 text-neutral-400 border-b border-neutral-800 whitespace-nowrap" {...props} />,
-                         th: ({node, ...props}) => <th className="px-6 py-5 font-bold tracking-wider" {...props} />,
-                         td: ({node, ...props}) => <td className="px-6 py-4 border-b border-neutral-800/50 align-top" {...props} />,
-                         tr: ({node, ...props}) => <tr className="transition-colors hover:bg-neutral-800/30" {...props} />,
-                       }}
-                     >
-                       {displayResult}
-                     </ReactMarkdown>
-                  </div>
-                </div>
+        <div className="p-4 border-t border-slate-800 text-xs text-slate-400 flex flex-col space-y-1">
+          <div className="flex items-center justify-between">
+            <span>Engine: Gemini 2.5 Flash</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          </div>
+          <span>Domain: Plant Pathology & Research</span>
+        </div>
+      </aside>
+
+      {/* Main Chat Panel */}
+      <section className="flex-1 flex flex-col h-full bg-slate-950 relative">
+        {/* Top Header */}
+        <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-6 z-10">
+          <div className="flex items-center space-x-3">
+            <span className="md:hidden text-lg">🌿</span>
+            <h2 className="font-semibold text-slate-200">Interactive Phytopathological Synthesizer</h2>
+          </div>
+          {messages.length > 0 && (
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={downloadBibTeX}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium py-1.5 px-3 rounded border border-slate-700 transition-colors flex items-center space-x-1.5"
+              >
+                <span>📁 Export BibTeX</span>
+              </button>
+              <button
+                onClick={downloadPDF}
+                disabled={downloading}
+                className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium py-1.5 px-3 rounded transition-colors flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+              >
+                <span>{downloading ? 'Generating PDF...' : '📥 Download PDF'}</span>
+              </button>
+            </div>
+          )}
+        </header>
+
+        {/* Chat Stream */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-4">
+              <div className="w-16 h-16 rounded-full bg-emerald-950 border border-emerald-800 flex items-center justify-center text-3xl shadow-inner">
+                🌾
               </div>
-
-              {/* INTERACTIVE CHAT ENGINE */}
-              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-6 lg:p-8 rounded-[2rem] shadow-2xl">
-                <h3 className="text-lg font-bold text-emerald-400 mb-6 flex items-center gap-2">
-                  <span>💬</span> Chat with the Literature
-                </h3>
-                
-                {chatHistory.length > 0 && (
-                  <div className="space-y-6 mb-6">
-                    {chatHistory.map((msg, idx) => (
-                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-neutral-800 text-neutral-200 rounded-tr-sm' : 'bg-emerald-900/20 border border-emerald-800/30 text-neutral-300 rounded-tl-sm'}`}>
-                          {msg.role === 'ai' ? (
-                             <div className="space-y-2 text-sm">
-                               <ReactMarkdown>{msg.content}</ReactMarkdown>
-                             </div>
-                          ) : (
-                            <p className="text-sm">{msg.content}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={followUpQuery}
-                    onChange={(e) => setFollowUpQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleFollowUpSearch()}
-                    placeholder="Ask a specific question about the data above..."
-                    className="flex-1 p-4 rounded-xl bg-[#0f0f11] border border-neutral-800/80 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-                  />
-                  <button
-                    onClick={handleFollowUpSearch}
-                    disabled={followUpLoading || !followUpQuery}
-                    className="px-6 py-4 bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold rounded-xl transition-all disabled:opacity-50"
-                  >
-                    {followUpLoading ? '...' : 'Ask'}
-                  </button>
-                </div>
+              <h3 className="text-xl font-bold text-slate-100">Welcome to PhytoLit AI</h3>
+              <p className="text-sm text-slate-400">
+                Your intelligent research companion for plant pathology, disease diagnostics, biocontrol mechanisms, and academic literature synthesis. Enter your query below to begin.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full pt-4 text-left">
+                <button
+                  onClick={() => setInput('Effectiveness of Pseudomonas fluorescens against bacterial blight in rice')}
+                  className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs text-slate-300 transition-colors"
+                >
+                  🌱 Pseudomonas fluorescens in Rice
+                </button>
+                <button
+                  onClick={() => setInput('Integrated management strategies for cotton angular leaf spot')}
+                  className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs text-slate-300 transition-colors"
+                >
+                  🦠 Cotton Angular Leaf Spot Control
+                </button>
               </div>
-
             </div>
           ) : (
-            <div className="hidden lg:flex flex-col items-center justify-center h-full min-h-[80vh] border border-dashed border-neutral-800/60 rounded-[2rem] text-neutral-600 bg-[#141417]/30">
-              <p className="text-sm font-bold uppercase tracking-widest">Awaiting Input Parameters</p>
+            <div id="pdf-content" className="space-y-6 max-w-4xl mx-auto bg-slate-950 p-2 rounded-xl">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-3xl rounded-2xl p-5 shadow-sm ${
+                      msg.role === 'user'
+                        ? 'bg-emerald-600 text-white rounded-br-none'
+                        : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none'
+                    }`}
+                  >
+                    {msg.role === 'user' ? (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                    ) : (
+                      <div className="prose prose-invert max-w-none text-sm leading-relaxed">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl rounded-bl-none p-4 flex items-center space-x-3">
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce"></div>
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                    <span className="text-xs text-slate-400 pl-2">Synthesizing literature & pathways...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
             </div>
           )}
         </div>
 
-      </div>
-
-      {/* WATERMARK FOOTER */}
-      <footer className="relative z-10 text-center py-6 border-t border-neutral-800/50 mt-12">
-        <p className="text-xs font-semibold tracking-widest text-neutral-500 uppercase">
-          Made by Adil Jamali 🦅
-        </p>
-      </footer>
+        {/* Input Bar */}
+        <div className="p-4 border-t border-slate-800 bg-slate-900/50 backdrop-blur">
+          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center space-x-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask about pathogens, treatments, mechanisms, or research protocols..."
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-600 transition-colors shadow-inner"
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-medium text-sm transition-colors shadow-sm flex items-center justify-center"
+            >
+              Send
+            </button>
+          </form>
+          <div className="text-center text-[10px] text-slate-400 mt-2">
+            PhytoLit AI Research Assistant • Powered by Google Gemini
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
