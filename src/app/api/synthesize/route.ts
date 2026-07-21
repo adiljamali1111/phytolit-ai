@@ -20,3 +20,18 @@ export async function POST(req: Request) {
       CRITICAL FORMATTING RULES - YOU MUST OBEY THESE STRICTLY:
       1. NO ASCII ART OR DIAGRAMS: Under no circumstances should you use keyboard characters (+, -, |, v, >, <) to draw flowcharts, structural boxes, or diagrams. Use standard nested bullet points for pathways or hierarchies.
       2. STRICT MARKDOWN TABLES: When presenting comparative data, you MUST use strict GitHub Flavored Markdown tables with pipe (|) characters and hyphens (-). NEVER use spaces or tabs to visually align text.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: prompt,
+    });
+
+    return NextResponse.json({ result: response.text });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Synthesis failed' },
+      { status: 500 }
+    );
+  }
+}
