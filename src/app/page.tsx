@@ -119,13 +119,14 @@ export default function Home() {
     try {
       const element = document.getElementById('pdf-content');
       const html2pdf = (await import('html2pdf.js')).default;
-      const opt = {
-        margin: 0.5,
-        filename: 'PhytoLit_Synthesis.pdf',
-        image: { type: 'jpeg' as any, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a' },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as any },
-      };
+          const opt = {
+      margin: 0.5,
+      filename: 'PhytoLit_Synthesis.pdf',
+      image: { type: 'jpeg' as any, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a', logging: false },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as any },
+    };
+
       
       if (element) {
         await html2pdf().set(opt).from(element).save();
