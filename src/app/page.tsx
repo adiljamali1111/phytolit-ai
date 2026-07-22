@@ -122,22 +122,23 @@ export default function Home() {
     }, 1000);
   };
 
-  // Generates academic DOCX with Times New Roman & native subscript math formatting
+  // Generates executive DOCX with Times New Roman & Web Emerald Theme
   const handleDownloadDocx = async () => {
     try {
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, BorderStyle, WidthType, ShadingType, AlignmentType } = await import('docx');
 
-      // Helper to convert math/subscripts inside any text run
-      const parseMathAndSubscripts = (rawText: string, isBold: boolean, isItalic: boolean) => {
+      // Converts LaTeX Math + Markdown formatting to crisp Times New Roman TextRuns
+      const parseInlineText = (text: string): InstanceType<typeof TextRun>[] => {
         const runs: InstanceType<typeof TextRun>[] = [];
-        const mathParts = rawText.split(/(\$.*?\$)/g);
+        const cleanedText = text.replace(/\*\*\*/g, '**');
+        const mathTokens = cleanedText.split(/(\$.*?\$)/g);
 
-        mathParts.forEach((part) => {
-          if (!part) return;
+        mathTokens.forEach((token) => {
+          if (!token) return;
 
-          if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
-            let formula = part.slice(1, -1)
-              .replace(/\\(text|mathrm|mathbf)\{(.*?)\}/g, '$2')
+          if (token.startsWith('$') && token.endsWith('$') && token.length > 2) {
+            let formula = token.slice(1, -1)
+              .replace(/\\(text|mathrm|作战|mathbf)\{(.*?)\}/g, '$2')
               .replace(/\\beta/g, 'β')
               .replace(/\\alpha/g, 'α')
               .replace(/\\gamma/g, 'γ')
@@ -145,77 +146,36 @@ export default function Home() {
               .replace(/\\mu/g, 'μ')
               .replace(/\\/g, '');
 
-            const subSuperRegex = /(_\{.*?\}|_[\da-zA-Z]|\^\{.*?\}|\^[\da-zA-Z])/g;
-            const subParts = formula.split(subSuperRegex);
-
-            subParts.forEach((subPart) => {
-              if (!subPart) return;
-              if (subPart.startsWith('_')) {
-                const val = subPart.startsWith('_{') ? subPart.slice(2, -1) : subPart.slice(1);
-                runs.push(new TextRun({
-                  text: val,
-                  subScript: true,
-                  bold: isBold,
-                  italics: isItalic,
-                  font: 'Times New Roman',
-                  size: 24,
-                  color: '1A1A1A',
-                }));
-              } else if (subPart.startsWith('^')) {
-                const val = subPart.startsWith('^{') ? subPart.slice(2, -1) : subPart.slice(1);
-                runs.push(new TextRun({
-                  text: val,
-                  superScript: true,
-                  bold: isBold,
-                  italics: isItalic,
-                  font: 'Times New Roman',
-                  size: 24,
-                  color: '1A1A1A',
-                }));
+            const subParts = formula.split(/(_\{.*?\}|_[\da-zA-Z]|\^\{.*?\}|\^[\da-zA-Z])/g);
+            subParts.forEach((sp) => {
+              if (!sp) return;
+              if (sp.startsWith('_')) {
+                const val = sp.startsWith('_{') ? sp.slice(2, -1) : sp.slice(1);
+                runs.push(new TextRun({ text: val, subScript: true, font: 'Times New Roman', size: 24, color: '111827' }));
+              } else if (sp.startsWith('^')) {
+                const val = sp.startsWith('^{') ? sp.slice(2, -1) : sp.slice(1);
+                runs.push(new TextRun({ text: val, superScript: true, font: 'Times New Roman', size: 24, color: '111827' }));
               } else {
-                runs.push(new TextRun({
-                  text: subPart,
-                  bold: isBold,
-                  italics: isItalic,
-                  font: 'Times New Roman',
-                  size: 24,
-                  color: '1A1A1A',
-                }));
+                runs.push(new TextRun({ text: sp, font: 'Times New Roman', size: 24, color: '111827' }));
               }
             });
           } else {
-            const cleanPart = part.replace(/\$/g, '');
-            runs.push(new TextRun({
-              text: cleanPart,
-              bold: isBold,
-              italics: isItalic,
-              font: 'Times New Roman',
-              size: 24,
-              color: '2B2B2B',
-            }));
-          }
-        });
-
-        return runs;
-      };
-
-      // Two-pass parser: Handles outer Markdown (bold/italic) and nested math
-      const parseInlineText = (text: string) => {
-        const cleanedText = text.replace(/\*\*\*/g, '**');
-        const runs: InstanceType<typeof TextRun>[] = [];
-        const segments = cleanedText.split(/(\*\*.*?\*\*|\*.*?\*)/g);
-
-        segments.forEach((segment) => {
-          if (!segment) return;
-
-          if (segment.startsWith('**') && segment.endsWith('**') && segment.length >= 4) {
-            const innerText = segment.slice(2, -2);
-            runs.push(...parseMathAndSubscripts(innerText, true, false));
-          } else if (segment.startsWith('*') && segment.endsWith('*') && segment.length >= 2) {
-            const innerText = segment.slice(1, -1);
-            runs.push(...parseMathAndSubscripts(innerText, false, true));
-          } else {
-            runs.push(...parseMathAndSubscripts(segment, false, false));
+            const segments = token.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+            segments.forEach((seg) => {
+              if (!seg) return;
+              if (seg.startsWith('**') && seg.endsWith('**') && seg.length >= 4) {
+                const content = seg.slice(2, -2).replace(/\*/g, '');
+                runs.push(new TextRun({ text: content, bold: true, font: 'Times New Roman', size: 24, color: '0F5132' }));
+              } else if (seg.startsWith('*') && seg.endsWith('*') && seg.length >= 2) {
+                const content = seg.slice(1, -1).replace(/\*/g, '');
+                runs.push(new TextRun({ text: content, italics: true, font: 'Times New Roman', size: 24, color: '374151' }));
+              } else {
+                const content = seg.replace(/\*/g, '');
+                if (content) {
+                  runs.push(new TextRun({ text: content, font: 'Times New Roman', size: 24, color: '1F2937' }));
+                }
+              }
+            });
           }
         });
 
@@ -241,13 +201,13 @@ export default function Home() {
                   spacing: { before: 80, after: 80 },
                 }),
               ],
-              shading: isHeader ? { fill: 'F0F7F4', type: ShadingType.CLEAR } : undefined,
+              shading: isHeader ? { fill: 'E8F5E9', type: ShadingType.CLEAR } : undefined,
               width: { size: Math.floor(100 / rowCells.length), type: WidthType.PERCENTAGE },
               borders: {
-                top: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
-                bottom: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
-                left: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
-                right: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
+                top: { style: BorderStyle.SINGLE, size: 1, color: 'C8E6C9' },
+                bottom: { style: BorderStyle.SINGLE, size: 1, color: 'C8E6C9' },
+                left: { style: BorderStyle.SINGLE, size: 1, color: 'C8E6C9' },
+                right: { style: BorderStyle.SINGLE, size: 1, color: 'C8E6C9' },
               },
             })),
           });
@@ -258,7 +218,7 @@ export default function Home() {
           width: { size: 100, type: WidthType.PERCENTAGE },
         }));
 
-        children.push(new Paragraph({ spacing: { after: 200 } }));
+        children.push(new Paragraph({ spacing: { after: 180 } }));
         tableRowsData = [];
       };
 
@@ -267,7 +227,7 @@ export default function Home() {
 
         if (line === '---' || line === '***' || line === '___') {
           children.push(new Paragraph({
-            border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D3D3D3' } },
+            border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '10B981' } },
             spacing: { before: 180, after: 180 },
           }));
           continue;
@@ -288,41 +248,42 @@ export default function Home() {
 
         if (line.startsWith('# ')) {
           children.push(new Paragraph({
-            text: line.replace('# ', '').replace(/\*/g, ''),
+            children: parseInlineText(line.replace('# ', '')),
             heading: HeadingLevel.HEADING_1,
-            spacing: { before: 280, after: 140 },
+            spacing: { before: 320, after: 160 },
           }));
         } else if (line.startsWith('## ')) {
           children.push(new Paragraph({
-            text: line.replace('## ', '').replace(/\*/g, ''),
+            children: parseInlineText(line.replace('## ', '')),
             heading: HeadingLevel.HEADING_2,
-            spacing: { before: 240, after: 120 },
+            spacing: { before: 260, after: 120 },
           }));
         } else if (line.startsWith('### ')) {
           children.push(new Paragraph({
-            text: line.replace('### ', '').replace(/\*/g, ''),
+            children: parseInlineText(line.replace('### ', '')),
             heading: HeadingLevel.HEADING_3,
-            spacing: { before: 200, after: 100 },
+            spacing: { before: 220, after: 100 },
           }));
         } else if (line.startsWith('* ') || line.startsWith('- ')) {
           const listText = line.replace(/^[\*\-]\s+/, '');
           children.push(new Paragraph({
             children: parseInlineText(listText),
             bullet: { level: 0 },
-            spacing: { after: 100 },
+            spacing: { before: 40, after: 80 },
           }));
         } else if (/^\d+\.\s+/.test(line)) {
           const listText = line.replace(/^\d+\.\s+/, '');
           children.push(new Paragraph({
             children: parseInlineText(listText),
-            spacing: { after: 100, left: 360 },
+            indent: { left: 360 },
+            spacing: { before: 40, after: 80 },
           }));
         } else {
           // Standard Academic Body Paragraph (Justified text + 12pt Times New Roman)
           children.push(new Paragraph({
             children: parseInlineText(line),
             alignment: AlignmentType.JUSTIFIED,
-            spacing: { after: 140, line: 276 },
+            spacing: { before: 60, after: 140, line: 276 },
           }));
         }
       }
@@ -339,9 +300,9 @@ export default function Home() {
               next: 'Normal',
               quickFormat: true,
               run: {
-                size: 36,
+                size: 36, // 18pt
                 bold: true,
-                color: '0F5132',
+                color: '0F5132', // Emerald Theme Accent
                 font: 'Times New Roman',
               },
             },
@@ -352,9 +313,9 @@ export default function Home() {
               next: 'Normal',
               quickFormat: true,
               run: {
-                size: 28,
+                size: 28, // 14pt
                 bold: true,
-                color: '198754',
+                color: '198754', // Mid Emerald Accent
                 font: 'Times New Roman',
               },
             },
@@ -365,9 +326,9 @@ export default function Home() {
               next: 'Normal',
               quickFormat: true,
               run: {
-                size: 24,
+                size: 24, // 12pt
                 bold: true,
-                color: '212529',
+                color: '0D9488', // Deep Teal Accent
                 font: 'Times New Roman',
               },
             },
@@ -377,7 +338,7 @@ export default function Home() {
           {
             properties: {
               page: {
-                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1-inch standard margins
               },
             },
             children: children,
