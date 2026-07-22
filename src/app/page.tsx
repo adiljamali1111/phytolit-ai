@@ -4,7 +4,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
-import html2canvas from 'html2canvas-pro';
 import 'katex/dist/katex.min.css';
 
 interface HistoryItem {
@@ -24,7 +23,6 @@ export default function Home() {
   const [format, setFormat] = useState('Literature Review');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
@@ -91,7 +89,7 @@ export default function Home() {
         body: JSON.stringify({ query: combinedQuery, format: 'Bullet Points' }),
       });
       const data = await res.json();
-      const cleanResponse = (data.result || data.error).replace(/```bibtex[\s\S]*?```/, '');
+      const cleanResponse = (data.result || data.error).replace(/\x60\x60\x60bibtex[\s\S]*?\x60\x60\x60/, '');
       setChatHistory((prev) => [...prev, { role: 'ai', content: cleanResponse }]);
     } catch (err) {
       setChatHistory((prev) => [...prev, { role: 'ai', content: 'Error fetching follow-up response.' }]);
@@ -113,82 +111,18 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Direct File Download using html2canvas-pro + html2pdf.js
-  const handleDownloadPDF = async () => {
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
-
-    setDownloading(true);
-
-    try {
-      const html2pdf = (await import('html2pdf.js')).default;
-
-      // 1. Render DOM to canvas using html2canvas-pro (native lab() and oklch() support)
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#0f0f11',
-        logging: false,
-        onclone: (clonedDoc: Document) => {
-          // Unwrap scroll containers so tables don't get clipped horizontally
-          const scrollContainers = clonedDoc.querySelectorAll('.overflow-x-auto');
-          scrollContainers.forEach((container) => {
-            if (container instanceof HTMLElement) {
-              container.style.overflow = 'visible';
-              container.style.width = '100%';
-            }
-          });
-
-          const tables = clonedDoc.querySelectorAll('table');
-          tables.forEach((table) => {
-            if (table instanceof HTMLElement) {
-              table.style.width = '100%';
-              table.style.minWidth = '0';
-              table.style.tableLayout = 'auto';
-            }
-          });
-
-          const tableHeaders = clonedDoc.querySelectorAll('th');
-          tableHeaders.forEach((th) => {
-            if (th instanceof HTMLElement) {
-              th.style.padding = '6px 8px';
-              th.style.fontSize = '10px';
-              th.style.whiteSpace = 'normal';
-              th.style.wordBreak = 'break-word';
-            }
-          });
-
-          const tableCells = clonedDoc.querySelectorAll('td');
-          tableCells.forEach((td) => {
-            if (td instanceof HTMLElement) {
-              td.style.padding = '6px 8px';
-              td.style.fontSize = '11px';
-              td.style.whiteSpace = 'normal';
-              td.style.wordBreak = 'break-word';
-            }
-          });
-        },
-      });
-
-      // 2. Feed the html2canvas-pro canvas directly to html2pdf.js
-      const opt = {
-        margin: [0.4, 0.4, 0.4, 0.4],
-        filename: 'phytolit-AI.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-      };
-
-      await html2pdf().set(opt).from(canvas).save();
-    } catch (error) {
-      console.error('PDF Export Error:', error);
-    } finally {
-      setDownloading(false);
-    }
+  // Triggers vector print output with document title fallback
+  const handleDownloadPDF = () => {
+    const originalTitle = document.title;
+    document.title = 'phytolit-AI';
+    window.print();
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 1000);
   };
 
   const handleExportCitations = () => {
-    const match = result.match(/```bibtex([\s\S]*?)```/);
+    const match = result.match(/\x60\x60\x60bibtex([\s\S]*?)\x60\x60\x60/);
     const bibtexData = match ? match[1].trim() : "No citations found in this synthesis.";
     
     const element = document.createElement("a");
@@ -200,17 +134,87 @@ export default function Home() {
     document.body.removeChild(element);
   };
 
-  const displayResult = result.replace(/```bibtex[\s\S]*?```/, '');
+  // Clean raw bibtex and sanitize markdown syntax artifacts (\x60 = backtick)
+  const displayResult = result
+    .replace(/\x60\x60\x60bibtex[\s\S]*?\x60\x60\x60/, '')
+    .replace(/\*\*\*/g, '**')
+    .replace(/\*\*\s+/g, '**')
+    .replace(/\s+\*\*/g, '**');
 
   return (
     <main className="min-h-screen bg-[#0f0f11] text-neutral-200 selection:bg-emerald-500/30 font-sans pb-16 flex flex-col justify-between">
       
-      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-[#0f0f11] to-[#0f0f11] pointer-events-none"></div>
+      {/* SEAMLESS FULL-DARK PRINT STYLES */}
+      <style>{`
+        @media print {
+          /* 1. Remove Page Margins & Browser Header/Footer Text */
+          @page {
+            size: letter portrait;
+            margin: 0 !important;
+          }
 
-      <div className="relative z-10 max-w-[1600px] mx-auto p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
+          /* 2. Paint Entire Document Pure Dark Mode Across All Pages */
+          html, body, main {
+            background-color: #0f0f11 !important;
+            color: #e5e5e5 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Pad Content Safely Inside PDF Canvas */
+          #pdf-content {
+            background-color: #0f0f11 !important;
+            padding: 15mm !important;
+            box-sizing: border-box !important;
+          }
+
+          /* Hide UI Controls */
+          .print\\:hidden, header, .lg\\:col-span-4, .chat-engine, button, input, textarea, select, footer {
+            display: none !important;
+          }
+
+          .lg\\:col-span-8 {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+
+          /* 3. Table Boundaries & Text Wrapping */
+          .overflow-x-auto {
+            overflow: visible !important;
+            display: block !important;
+            width: 100% !important;
+          }
+
+          table {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+            border-collapse: collapse !important;
+          }
+
+          th, td {
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
+          }
+
+          /* Prevent splitting elements across page boundaries */
+          tr, li, blockquote, h1, h2, h3, p {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
+
+      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-[#0f0f11] to-[#0f0f11] pointer-events-none print:hidden"></div>
+
+      <div className="relative z-10 max-w-[1600px] mx-auto p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full print:p-0">
         
         {/* LEFT COLUMN: Controls & History */}
-        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-10 h-fit">
+        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-10 h-fit print:hidden">
           <header className="mb-8">
             <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300 mb-3">
               PhytoLit AI
@@ -274,12 +278,12 @@ export default function Home() {
         </div>
 
         {/* RIGHT COLUMN: Output Engine */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 print:w-full">
           {result ? (
             <div className="flex flex-col space-y-6">
               
-              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-8 lg:p-12 rounded-[2rem] shadow-2xl">
-                <div className="flex flex-wrap items-center justify-between border-b border-neutral-800/80 pb-6 mb-8 gap-4">
+              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-8 lg:p-12 rounded-[2rem] shadow-2xl print:border-none print:shadow-none print:p-0 print:bg-transparent">
+                <div className="flex flex-wrap items-center justify-between border-b border-neutral-800/80 pb-6 mb-8 gap-4 print:hidden">
                   <h2 className="text-xl font-bold text-neutral-100 tracking-wide">Output Generation</h2>
                   <div className="flex items-center gap-3">
                     <button 
@@ -296,15 +300,14 @@ export default function Home() {
                     </button>
                     <button 
                       onClick={handleDownloadPDF}
-                      disabled={downloading}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all disabled:opacity-50"
+                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all"
                     >
-                      {downloading ? 'Building PDF...' : 'Download PDF'}
+                      Download PDF
                     </button>
                   </div>
                 </div>
                 
-                <div id="pdf-content" className="p-2 bg-[#0f0f11] text-neutral-200">
+                <div id="pdf-content" className="p-2 print:p-0">
                   <div className="text-neutral-300 text-base leading-relaxed tracking-wide">
                      <ReactMarkdown 
                        remarkPlugins={[remarkMath, remarkGfm]} 
@@ -319,8 +322,8 @@ export default function Home() {
                          strong: ({node, ...props}) => <strong className="font-bold text-emerald-300" {...props} />,
                          a: ({node, ...props}) => <a className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 decoration-emerald-400/30" {...props} />,
                          table: ({node, ...props}) => (
-                           <div className="overflow-x-auto my-10 rounded-2xl border border-neutral-800 bg-[#0f0f11] shadow-xl custom-scrollbar">
-                             <table className="w-full text-sm text-left text-neutral-300 border-collapse min-w-[600px]" {...props} />
+                           <div className="overflow-x-auto my-10 rounded-2xl border border-neutral-800 bg-[#0f0f11] shadow-xl custom-scrollbar print:border-neutral-700">
+                             <table className="w-full text-sm text-left text-neutral-300 border-collapse min-w-[600px] print:min-w-0" {...props} />
                            </div>
                          ),
                          thead: ({node, ...props}) => <thead className="text-xs uppercase bg-neutral-900/80 text-neutral-400 border-b border-neutral-800 whitespace-nowrap" {...props} />,
@@ -336,7 +339,7 @@ export default function Home() {
               </div>
 
               {/* INTERACTIVE CHAT ENGINE */}
-              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-6 lg:p-8 rounded-[2rem] shadow-2xl chat-engine">
+              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-6 lg:p-8 rounded-[2rem] shadow-2xl chat-engine print:hidden">
                 <h3 className="text-lg font-bold text-emerald-400 mb-6 flex items-center gap-2">
                   <span>💬</span> Chat with the Literature
                 </h3>
@@ -380,7 +383,7 @@ export default function Home() {
 
             </div>
           ) : (
-            <div className="hidden lg:flex flex-col items-center justify-center h-full min-h-[80vh] border border-dashed border-neutral-800/60 rounded-[2rem] text-neutral-600 bg-[#141417]/30">
+            <div className="hidden lg:flex flex-col items-center justify-center h-full min-h-[80vh] border border-dashed border-neutral-800/60 rounded-[2rem] text-neutral-600 bg-[#141417]/30 print:hidden">
               <p className="text-sm font-bold uppercase tracking-widest">Awaiting Input Parameters</p>
             </div>
           )}
@@ -389,7 +392,7 @@ export default function Home() {
       </div>
 
       {/* WATERMARK FOOTER */}
-      <footer className="relative z-10 text-center py-6 border-t border-neutral-800/50 mt-12">
+      <footer className="relative z-10 text-center py-6 border-t border-neutral-800/50 mt-12 print:hidden">
         <p className="text-xs font-semibold tracking-widest text-neutral-500 uppercase">
           Made by Adil Jamali 🦅
         </p>
