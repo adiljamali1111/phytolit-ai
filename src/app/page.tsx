@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import html2canvas from 'html2canvas-pro';
 import 'katex/dist/katex.min.css';
 
 interface HistoryItem {
@@ -23,8 +24,8 @@ export default function Home() {
   const [format, setFormat] = useState('Literature Review');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -112,32 +113,79 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Direct File Download using html2canvas-pro + html2pdf.js
   const handleDownloadPDF = async () => {
-  setDownloading(true);
-  
-  setTimeout(async () => {
-    try {
-      const element = document.getElementById('pdf-content');
-      const html2pdf = (await import('html2pdf.js')).default;
-          const opt = {
-      margin: 0.5,
-      filename: 'PhytoLit_Synthesis.pdf',
-      image: { type: 'jpeg' as any, quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a0a', logging: false },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as any },
-    };
+    const element = document.getElementById('pdf-content');
+    if (!element) return;
 
-      
-      if (element) {
-        await html2pdf().set(opt).from(element).save();
-      }
-    } catch (err) {
-      console.error('PDF generation failed:', err);
+    setDownloading(true);
+
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+
+      // 1. Render DOM to canvas using html2canvas-pro (native lab() and oklch() support)
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#0f0f11',
+        logging: false,
+        onclone: (clonedDoc: Document) => {
+          // Unwrap scroll containers so tables don't get clipped horizontally
+          const scrollContainers = clonedDoc.querySelectorAll('.overflow-x-auto');
+          scrollContainers.forEach((container) => {
+            if (container instanceof HTMLElement) {
+              container.style.overflow = 'visible';
+              container.style.width = '100%';
+            }
+          });
+
+          const tables = clonedDoc.querySelectorAll('table');
+          tables.forEach((table) => {
+            if (table instanceof HTMLElement) {
+              table.style.width = '100%';
+              table.style.minWidth = '0';
+              table.style.tableLayout = 'auto';
+            }
+          });
+
+          const tableHeaders = clonedDoc.querySelectorAll('th');
+          tableHeaders.forEach((th) => {
+            if (th instanceof HTMLElement) {
+              th.style.padding = '6px 8px';
+              th.style.fontSize = '10px';
+              th.style.whiteSpace = 'normal';
+              th.style.wordBreak = 'break-word';
+            }
+          });
+
+          const tableCells = clonedDoc.querySelectorAll('td');
+          tableCells.forEach((td) => {
+            if (td instanceof HTMLElement) {
+              td.style.padding = '6px 8px';
+              td.style.fontSize = '11px';
+              td.style.whiteSpace = 'normal';
+              td.style.wordBreak = 'break-word';
+            }
+          });
+        },
+      });
+
+      // 2. Feed the html2canvas-pro canvas directly to html2pdf.js
+      const opt = {
+        margin: [0.4, 0.4, 0.4, 0.4],
+        filename: 'phytolit-AI.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+      };
+
+      await html2pdf().set(opt).from(canvas).save();
+    } catch (error) {
+      console.error('PDF Export Error:', error);
     } finally {
       setDownloading(false);
     }
-  }, 100);
-};
+  };
 
   const handleExportCitations = () => {
     const match = result.match(/```bibtex([\s\S]*?)```/);
@@ -156,6 +204,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0f0f11] text-neutral-200 selection:bg-emerald-500/30 font-sans pb-16 flex flex-col justify-between">
+      
       <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-[#0f0f11] to-[#0f0f11] pointer-events-none"></div>
 
       <div className="relative z-10 max-w-[1600px] mx-auto p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
@@ -250,12 +299,12 @@ export default function Home() {
                       disabled={downloading}
                       className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all disabled:opacity-50"
                     >
-                      {downloading ? 'Generating PDF...' : 'Download PDF'}
+                      {downloading ? 'Building PDF...' : 'Download PDF'}
                     </button>
                   </div>
                 </div>
                 
-                <div id="pdf-content" className="p-2">
+                <div id="pdf-content" className="p-2 bg-[#0f0f11] text-neutral-200">
                   <div className="text-neutral-300 text-base leading-relaxed tracking-wide">
                      <ReactMarkdown 
                        remarkPlugins={[remarkMath, remarkGfm]} 
@@ -287,7 +336,7 @@ export default function Home() {
               </div>
 
               {/* INTERACTIVE CHAT ENGINE */}
-              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-6 lg:p-8 rounded-[2rem] shadow-2xl">
+              <div className="bg-[#141417]/80 backdrop-blur-xl border border-neutral-800/80 p-6 lg:p-8 rounded-[2rem] shadow-2xl chat-engine">
                 <h3 className="text-lg font-bold text-emerald-400 mb-6 flex items-center gap-2">
                   <span>💬</span> Chat with the Literature
                 </h3>
