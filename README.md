@@ -48,6 +48,8 @@ PhytoLit AI utilizes Google's Gemini AI model through two specialized workflows:
 
 ### 1. Literature Synthesis Workflow
 The synthesis engine ingests user research queries and formats structured literature reviews complete with citations and comparative tables.
+## 2. Context-Aware Q&A / Chat Workflow
+The interactive follow-up engine maintains full conversation history and literature context, enabling researchers to ask targeted questions, drill down into specific trial dosages, clarify statistical metrics, or explore disease mechanisms in real time.
 
 Screenshots of the app in action:
 <img width="946" height="382" alt="Screenshot 2026-07-22 184829" src="https://github.com/user-attachments/assets/c68564fe-199a-42b7-b67d-46a4c242ad4e" />
