@@ -70,3 +70,5 @@ FORMATTING RULES:
 - Use clear Markdown headings (#, ##, ###).
 - Use **bold** for key terms and *italics* for scientific names.
 - Provide clean, professional layout structures ready for document export.
+
+Screenshots of the app in action:
