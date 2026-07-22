@@ -45,6 +45,45 @@ Academic research in plant pathology, crop disease management, and biological co
 - 💬 **Interactive "Chat with the Literature":** Context-aware follow-up Q&A engine grounded strictly in the generated synthesis to answer specific questions regarding trial metrics, pathogen strains, or treatment dosages.
 - 🧪 **KaTeX Math & Chemical Formula Rendering:** Renders complex mathematical equations, chemical formulas, and biological notation using KaTeX and LaTeX syntax.
 - 💾 **Local History Storage:** Automatically persists recent search queries and generated outputs in browser `localStorage` for quick reload and offline reference.
+  
+## 📖 USER MANUAL: HOW TO OPERATE PHYTOLIT AI
+
+This operational guide details how to navigate and use all interactive features in PhytoLit AI.
+
+---
+
+### 1. Generating Literature Syntheses
+1. **Navigate to the Input Panel:** On the left side of the dashboard (or top on mobile devices), locate the **Research Topic** input field.
+2. **Enter Research Parameters:** Type your research query or key topic (e.g., *"Biocontrol agents in combination with resistance inducers to mitigate angular leaf spot of cotton"*).
+3. **Select Synthesis Format:** Choose one of the three available output formats from the dropdown menu:
+   * **Academic Literature Review:** Generates a comprehensive, multi-section literature review formatted for formal academic papers or thesis background sections.
+   * **Executive Summary:** Produces a high-level summary focused on main methodologies, biological mechanisms, and primary conclusions.
+   * **Key Takeaways (Bullet Points):** Breaks down findings into bullet points for quick skimming.
+4. **Execute:** Click **Generate Synthesis**. The system will process the literature query and render formatted results on the right side of the dashboard.
+
+---
+
+### 2. Interactive "Chat with the Literature"
+1. **Locate Chat Panel:** Once a synthesis has been generated, scroll down to the **Chat with the Literature** section located below the output display.
+2. **Ask Follow-Up Inquiries:** Type specific follow-up questions in the input field (e.g., *"What were the specific application rates or dosages for Bacillus subtilis in the trial?"*).
+3. **Submit Question:** Click **Ask** or press `Enter`. The AI assistant will answer your question directly based on the generated context.
+
+---
+
+### 3. Accessing Search History
+* **Recent Searches:** Your 10 most recent queries are saved to your browser's local storage.
+* **Reloading Output:** Under the input form on the left column, click any item in the **Recent Syntheses** list to reload the query and its output.
+
+---
+
+### 4. Exporting & Saving Your Work
+Use the top action bar located above the output generation panel to export your results:
+* **Export .bib:** Extracts all embedded BibTeX citation blocks from the generated literature review and downloads them as a `.bib` file ready for Zotero, Mendeley, or EndNote.
+* **Copy Text:** Copies the clean Markdown output to your clipboard for quick pasting.
+* **Download Document Menu:**
+  * **Download PDF:** Generates a vector PDF of your synthesis, retaining the dark-mode aesthetic, tables, and KaTeX math formulas.
+  * **Download Word (.docx):** Generates an executive Microsoft Word document formatted according to thesis standards (12pt Times New Roman, justified text, $1.15\times$ line spacing, and formatted table gridlines).
+
 
 ---
 
@@ -93,3 +132,10 @@ Screenshots of the app in action:
 <img width="947" height="410" alt="Screenshot 2026-07-22 184703" src="https://github.com/user-attachments/assets/64f437fc-43e2-414d-ba76-de5927acfbe5" />
 <img width="949" height="512" alt="Screenshot 2026-07-22 184912" src="https://github.com/user-attachments/assets/93330fcb-1a8f-42be-9e03-71dbbdbede40" />
 <img width="959" height="539" alt="Screenshot 2026-07-23 012654" src="https://github.com/user-attachments/assets/6cf31391-d364-410c-9630-9aea406c3998" />
+
+## 👤 Author & Acknowledgments
+
+Designed and developed by **Adil Jamali** 🦅  
+*Plant Pathology Graduate Researcher & Developer*
+
+> Thank you ACT AI team for enabling me to do this, Ciao!
