@@ -478,7 +478,7 @@ export default function Home() {
             page-break-inside: avoid !important;
           }
         }
-      `}</style>
+      ` Flore`}</style>
 
       <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-[#0f0f11] to-[#0f0f11] pointer-events-none print:hidden"></div>
 
