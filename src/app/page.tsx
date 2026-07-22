@@ -24,6 +24,7 @@ export default function Home() {
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isDownloadOpen, setIsDownloadOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -111,7 +112,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Triggers vector print output with document title fallback
+  // Triggers vector print output
   const handleDownloadPDF = () => {
     const originalTitle = document.title;
     document.title = 'phytolit-AI';
@@ -119,6 +120,283 @@ export default function Home() {
     setTimeout(() => {
       document.title = originalTitle;
     }, 1000);
+  };
+
+  // Generates academic DOCX with Times New Roman & native subscript math formatting
+  const handleDownloadDocx = async () => {
+    try {
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, BorderStyle, WidthType, ShadingType, AlignmentType } = await import('docx');
+
+      // Helper to convert math/subscripts inside any text run
+      const parseMathAndSubscripts = (rawText: string, isBold: boolean, isItalic: boolean) => {
+        const runs: InstanceType<typeof TextRun>[] = [];
+        const mathParts = rawText.split(/(\$.*?\$)/g);
+
+        mathParts.forEach((part) => {
+          if (!part) return;
+
+          if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+            let formula = part.slice(1, -1)
+              .replace(/\\(text|mathrm|mathbf)\{(.*?)\}/g, '$2')
+              .replace(/\\beta/g, 'β')
+              .replace(/\\alpha/g, 'α')
+              .replace(/\\gamma/g, 'γ')
+              .replace(/\\pm/g, '±')
+              .replace(/\\mu/g, 'μ')
+              .replace(/\\/g, '');
+
+            const subSuperRegex = /(_\{.*?\}|_[\da-zA-Z]|\^\{.*?\}|\^[\da-zA-Z])/g;
+            const subParts = formula.split(subSuperRegex);
+
+            subParts.forEach((subPart) => {
+              if (!subPart) return;
+              if (subPart.startsWith('_')) {
+                const val = subPart.startsWith('_{') ? subPart.slice(2, -1) : subPart.slice(1);
+                runs.push(new TextRun({
+                  text: val,
+                  subScript: true,
+                  bold: isBold,
+                  italics: isItalic,
+                  font: 'Times New Roman',
+                  size: 24,
+                  color: '1A1A1A',
+                }));
+              } else if (subPart.startsWith('^')) {
+                const val = subPart.startsWith('^{') ? subPart.slice(2, -1) : subPart.slice(1);
+                runs.push(new TextRun({
+                  text: val,
+                  superScript: true,
+                  bold: isBold,
+                  italics: isItalic,
+                  font: 'Times New Roman',
+                  size: 24,
+                  color: '1A1A1A',
+                }));
+              } else {
+                runs.push(new TextRun({
+                  text: subPart,
+                  bold: isBold,
+                  italics: isItalic,
+                  font: 'Times New Roman',
+                  size: 24,
+                  color: '1A1A1A',
+                }));
+              }
+            });
+          } else {
+            const cleanPart = part.replace(/\$/g, '');
+            runs.push(new TextRun({
+              text: cleanPart,
+              bold: isBold,
+              italics: isItalic,
+              font: 'Times New Roman',
+              size: 24,
+              color: '2B2B2B',
+            }));
+          }
+        });
+
+        return runs;
+      };
+
+      // Two-pass parser: Handles outer Markdown (bold/italic) and nested math
+      const parseInlineText = (text: string) => {
+        const cleanedText = text.replace(/\*\*\*/g, '**');
+        const runs: InstanceType<typeof TextRun>[] = [];
+        const segments = cleanedText.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+
+        segments.forEach((segment) => {
+          if (!segment) return;
+
+          if (segment.startsWith('**') && segment.endsWith('**') && segment.length >= 4) {
+            const innerText = segment.slice(2, -2);
+            runs.push(...parseMathAndSubscripts(innerText, true, false));
+          } else if (segment.startsWith('*') && segment.endsWith('*') && segment.length >= 2) {
+            const innerText = segment.slice(1, -1);
+            runs.push(...parseMathAndSubscripts(innerText, false, true));
+          } else {
+            runs.push(...parseMathAndSubscripts(segment, false, false));
+          }
+        });
+
+        return runs;
+      };
+
+      const lines = displayResult.split('\n');
+      const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
+
+      let inTable = false;
+      let tableRowsData: string[][] = [];
+
+      const processTable = () => {
+        if (tableRowsData.length === 0) return;
+
+        const rows = tableRowsData.map((rowCells, rowIndex) => {
+          const isHeader = rowIndex === 0;
+          return new TableRow({
+            children: rowCells.map((cellText) => new TableCell({
+              children: [
+                new Paragraph({
+                  children: parseInlineText(cellText.trim()),
+                  spacing: { before: 80, after: 80 },
+                }),
+              ],
+              shading: isHeader ? { fill: 'F0F7F4', type: ShadingType.CLEAR } : undefined,
+              width: { size: Math.floor(100 / rowCells.length), type: WidthType.PERCENTAGE },
+              borders: {
+                top: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
+                bottom: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
+                left: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
+                right: { style: BorderStyle.SINGLE, size: 1, color: 'D3D3D3' },
+              },
+            })),
+          });
+        });
+
+        children.push(new Table({
+          rows: rows,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+        }));
+
+        children.push(new Paragraph({ spacing: { after: 200 } }));
+        tableRowsData = [];
+      };
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        if (line === '---' || line === '***' || line === '___') {
+          children.push(new Paragraph({
+            border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D3D3D3' } },
+            spacing: { before: 180, after: 180 },
+          }));
+          continue;
+        }
+
+        if (line.startsWith('|') && line.endsWith('|')) {
+          if (line.replace(/[\s|:-]/g, '').length === 0) continue;
+          inTable = true;
+          const cells = line.split('|').slice(1, -1);
+          tableRowsData.push(cells);
+          continue;
+        } else if (inTable) {
+          inTable = false;
+          processTable();
+        }
+
+        if (!line) continue;
+
+        if (line.startsWith('# ')) {
+          children.push(new Paragraph({
+            text: line.replace('# ', '').replace(/\*/g, ''),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 280, after: 140 },
+          }));
+        } else if (line.startsWith('## ')) {
+          children.push(new Paragraph({
+            text: line.replace('## ', '').replace(/\*/g, ''),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 240, after: 120 },
+          }));
+        } else if (line.startsWith('### ')) {
+          children.push(new Paragraph({
+            text: line.replace('### ', '').replace(/\*/g, ''),
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 200, after: 100 },
+          }));
+        } else if (line.startsWith('* ') || line.startsWith('- ')) {
+          const listText = line.replace(/^[\*\-]\s+/, '');
+          children.push(new Paragraph({
+            children: parseInlineText(listText),
+            bullet: { level: 0 },
+            spacing: { after: 100 },
+          }));
+        } else if (/^\d+\.\s+/.test(line)) {
+          const listText = line.replace(/^\d+\.\s+/, '');
+          children.push(new Paragraph({
+            children: parseInlineText(listText),
+            spacing: { after: 100, left: 360 },
+          }));
+        } else {
+          // Standard Academic Body Paragraph (Justified text + 12pt Times New Roman)
+          children.push(new Paragraph({
+            children: parseInlineText(line),
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { after: 140, line: 276 },
+          }));
+        }
+      }
+
+      if (inTable) processTable();
+
+      const doc = new Document({
+        styles: {
+          paragraphStyles: [
+            {
+              id: 'Heading1',
+              name: 'Heading 1',
+              basedOn: 'Normal',
+              next: 'Normal',
+              quickFormat: true,
+              run: {
+                size: 36,
+                bold: true,
+                color: '0F5132',
+                font: 'Times New Roman',
+              },
+            },
+            {
+              id: 'Heading2',
+              name: 'Heading 2',
+              basedOn: 'Normal',
+              next: 'Normal',
+              quickFormat: true,
+              run: {
+                size: 28,
+                bold: true,
+                color: '198754',
+                font: 'Times New Roman',
+              },
+            },
+            {
+              id: 'Heading3',
+              name: 'Heading 3',
+              basedOn: 'Normal',
+              next: 'Normal',
+              quickFormat: true,
+              run: {
+                size: 24,
+                bold: true,
+                color: '212529',
+                font: 'Times New Roman',
+              },
+            },
+          ],
+        },
+        sections: [
+          {
+            properties: {
+              page: {
+                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+              },
+            },
+            children: children,
+          },
+        ],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'phytolit-AI.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Docx Export Error:', err);
+    }
   };
 
   const handleExportCitations = () => {
@@ -134,7 +412,6 @@ export default function Home() {
     document.body.removeChild(element);
   };
 
-  // Clean raw bibtex and sanitize markdown syntax artifacts (\x60 = backtick)
   const displayResult = result
     .replace(/\x60\x60\x60bibtex[\s\S]*?\x60\x60\x60/, '')
     .replace(/\*\*\*/g, '**')
@@ -147,13 +424,11 @@ export default function Home() {
       {/* SEAMLESS FULL-DARK PRINT STYLES */}
       <style>{`
         @media print {
-          /* 1. Remove Page Margins & Browser Header/Footer Text */
           @page {
             size: letter portrait;
             margin: 0 !important;
           }
 
-          /* 2. Paint Entire Document Pure Dark Mode Across All Pages */
           html, body, main {
             background-color: #0f0f11 !important;
             color: #e5e5e5 !important;
@@ -164,14 +439,12 @@ export default function Home() {
             print-color-adjust: exact !important;
           }
 
-          /* Pad Content Safely Inside PDF Canvas */
           #pdf-content {
             background-color: #0f0f11 !important;
             padding: 15mm !important;
             box-sizing: border-box !important;
           }
 
-          /* Hide UI Controls */
           .print\\:hidden, header, .lg\\:col-span-4, .chat-engine, button, input, textarea, select, footer {
             display: none !important;
           }
@@ -181,7 +454,6 @@ export default function Home() {
             max-width: 100% !important;
           }
 
-          /* 3. Table Boundaries & Text Wrapping */
           .overflow-x-auto {
             overflow: visible !important;
             display: block !important;
@@ -201,7 +473,6 @@ export default function Home() {
             overflow-wrap: break-word !important;
           }
 
-          /* Prevent splitting elements across page boundaries */
           tr, li, blockquote, h1, h2, h3, p {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
@@ -298,12 +569,41 @@ export default function Home() {
                     >
                       {copied ? 'Copied!' : 'Copy Text'}
                     </button>
-                    <button 
-                      onClick={handleDownloadPDF}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all"
-                    >
-                      Download PDF
-                    </button>
+                    
+                    {/* DOWNLOAD DOCUMENT DROPDOWN MENU */}
+                    <div className="relative inline-block text-left">
+                      <button
+                        onClick={() => setIsDownloadOpen(!isDownloadOpen)}
+                        className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+                      >
+                        <span>Download Document</span>
+                        <span className="text-xs">▾</span>
+                      </button>
+
+                      {isDownloadOpen && (
+                        <div className="absolute right-0 mt-2 w-52 rounded-2xl bg-[#141417] border border-neutral-800 shadow-2xl z-50 overflow-hidden py-1">
+                          <button
+                            onClick={() => {
+                              setIsDownloadOpen(false);
+                              handleDownloadPDF();
+                            }}
+                            className="w-full text-left px-4 py-3 text-sm text-neutral-200 hover:bg-neutral-800/80 hover:text-emerald-400 flex items-center gap-2 transition-all"
+                          >
+                            <span className="text-emerald-500">📄</span> Download PDF
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsDownloadOpen(false);
+                              handleDownloadDocx();
+                            }}
+                            className="w-full text-left px-4 py-3 text-sm text-neutral-200 hover:bg-neutral-800/80 hover:text-emerald-400 flex items-center gap-2 transition-all border-t border-neutral-800/50"
+                          >
+                            <span className="text-emerald-500">📝</span> Download Word (.docx)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 </div>
                 
